@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
@@ -12,13 +11,13 @@ class city;
 class Base;
 class warrior {
    public:
-    int id;        // 战士编号
-    int elements;  // 生命值
-    int force;     //攻击力
-    string part;   // 阵营
-    string name;   //名称
-    int location;  //所在城市
-    int cur_weapon_ind;
+    int id;              // 战士编号
+    int elements;        // 生命值
+    int force;           //攻击力
+    string part;         // 阵营
+    string name;         //名称
+    int location;        //所在城市
+    int cur_weapon_ind;  //当前使用武器的序号
     vector<weapon*> weapons;
     warrior(int id_,
             int elements_,
@@ -42,17 +41,23 @@ class warrior {
         name = w.name;
         location = w.location;
         // todo  weapons = move(w.weapons);
-        weapons = w.weapons;
+        weapons = move(w.weapons);
     }
+
     virtual void march();
     void reach_headquarter();
     void sort_weapons(bool used_first);
+    //数有多少可用武器，在clear和sort之后调用
     int count_weapons();
+    //清除不能再使用的武器
     void clear_weapons();
+    //战斗结束缴获武器
     void take_weapons_after_fight(warrior* enemy);
 
     bool is_alive();
+    //寻找合适的可用武器
     weapon* find_proper_weapon();
+    //攻击敌人
     void attack(warrior* enemy);
 };
 class dragon : public warrior {
@@ -89,7 +94,7 @@ class weapon {
     string name;
     weapon(string name_) : name(name_) {}
     virtual void attack(warrior* attacker, warrior* injure) {}
-    virtual bool is_usable() {}
+    virtual bool is_usable() { return false; }
 };
 
 class sword : public weapon {
@@ -113,19 +118,14 @@ class arrow : public weapon {
     virtual void attack(warrior* attacker, warrior* injure);
     virtual bool is_usable();
 };
-ostream& operator<<(ostream& out, warrior& w) {
-    out << w.part + "_" + w.name + "_";
-    out << w.id;
-    return out;
-}
 unordered_map<string, int> part_warrior_cnt;  //映射某派战士数量,用于生成id
 unordered_map<string, int>
     warrior_element;  //映射某种战士的生命值，用于保存输入数据
-unordered_map<string, int> warrior_force;
+unordered_map<string, int> warrior_force;  //映射武士攻击力
 unordered_map<string, vector<string>>
     warrior_build_order;  //映射某派的战士制造顺序
-vector<city> cities;
-sword* sw;
+vector<city> cities;      //城市向量
+sword* sw;                //唯一的共用的宝剑
 vector<string> red_order = {"iceman", "lion", "wolf", "ninja", "dragon"};
 vector<string> blue_order = {"lion", "dragon", "ninja", "iceman", "wolf"};
 vector<string> weapon_kinds = {"sword", "bomb", "arrow"};
@@ -136,10 +136,12 @@ enum fight_result { BOTH_DEAD, BOTH_ALIVE, BLUE_WIN, RED_WIN };
 
 class city {
    public:
+    // first是红战士指针，second是蓝战士指针
     warrior* first;
     warrior* second;
     city(warrior* red, warrior* blue) : first(red), second(blue) {}
 };
+//事件系统，统筹战斗的所有时间
 class event_system {
    public:
     static int clock;
@@ -164,23 +166,24 @@ bool event_system::conqured_red = false;
 
 class Base {
    public:
-    string part;  //阵营
-    int cur_life_value;
-    static int red_build_ind;
-    static int blue_build_ind;
+    string part;                //阵营
+    int cur_life_value;         //当前剩余生命值
+    static int red_build_ind;   //制造第几个红战士
+    static int blue_build_ind;  //制造第几个蓝战士
     static void increase_build_inds(string part, int bound);
     Base(string part_, int cur_life_value_)
         : part(part_), cur_life_value(cur_life_value_) {}
+
     warrior* make_warrior();
+    //制造武士时为其分配武器
     weapon* make_weapon(string name);
     warrior* further_process(warrior* p);
-    warrior* make_warriors();
+    void make_warriors();
 };
 int Base::blue_build_ind = 0;
 int Base::red_build_ind = 0;
 
 void warrior::march() {
-    assert(name != "iceman");
     int direction = part == "red" ? 1 : -1;  //红军为1向右走，-1向左走
     location += direction;
     cout << event_system::get_format_clock() << " " << part << " " << name
@@ -214,7 +217,6 @@ void warrior::sort_weapons(bool used_first) {
         weapon* p = weapons[i];
         if (p == nullptr)
             continue;
-        assert(p->name == "sword" || p->name == "bomb" || p->name == "arrow");
         if (p->name == "sword") {
             sword_cnt++;
         } else if (p->name == "bomb") {
@@ -222,7 +224,7 @@ void warrior::sort_weapons(bool used_first) {
             if (b->is_usable()) {
                 bomb_cnt++;
             }
-            // todo delete p;
+            delete p;
         } else {
             arrow* a = dynamic_cast<arrow*>(p);
             if (a->use_count == 0) {
@@ -230,7 +232,7 @@ void warrior::sort_weapons(bool used_first) {
             } else if (a->use_count == 1) {
                 used_arrow_cnt++;
             }
-            // todo delete p;
+            delete p;
         }
         weapons[i] = nullptr;
     }
@@ -246,6 +248,7 @@ void warrior::sort_weapons(bool used_first) {
         while (used_arrow_cnt--)
             weapons[ind++] = new arrow("arrow", 1);
     } else {
+        //新的arrow排在后
         while (used_arrow_cnt--)
             weapons[ind++] = new arrow("arrow", 1);
         while (new_arrow_cnt--)
@@ -269,6 +272,7 @@ int warrior::count_weapons() {
 void warrior::clear_weapons() {
     for (int i = 0; i < 10; i++) {
         if (weapons[i] != nullptr && !weapons[i]->is_usable()) {
+            delete weapons[i];
             weapons[i] = nullptr;
         }
     }
@@ -445,8 +449,7 @@ string event_system::get_format_clock() {
     ostringstream ost;
     ost << setw(3) << setfill('0') << hour << ":";
     ost << setw(2) << setfill('0') << minute;
-    return ost.str();
-    // todo return move(ost.str());
+    return move(ost.str());
 }
 
 void event_system::happen05_lion_escape() {
@@ -455,6 +458,7 @@ void event_system::happen05_lion_escape() {
         if (first != nullptr && first->name == "lion") {
             lion* l = dynamic_cast<lion*>(first);
             if (l->escape()) {
+                delete (cities[i].first);
                 cities[i].first = nullptr;
             }
         }
@@ -462,6 +466,7 @@ void event_system::happen05_lion_escape() {
         if (second != nullptr && second->name == "lion") {
             lion* l = dynamic_cast<lion*>(second);
             if (l->escape()) {
+                delete (cities[i].second);
                 cities[i].second = nullptr;
             }
         }
@@ -471,6 +476,7 @@ void event_system::happen10_warrior_march() {
     warrior* b = cities[1].second;
     if (b != nullptr) {
         b->reach_headquarter();
+        delete (cities[1].second);
         cities[1].second = nullptr;
     }
 
@@ -493,6 +499,7 @@ void event_system::happen10_warrior_march() {
     cities[cities.size() - 1].second = nullptr;
     if (next_move_red != nullptr) {
         next_move_red->reach_headquarter();
+        delete next_move_red;
     }
 }
 void event_system::happen35_wolf_rob() {
@@ -591,10 +598,14 @@ void event_system::happen40_war() {
         r->sort_weapons(true);
         b->clear_weapons();
         b->sort_weapons(true);
-        if (!r->is_alive())
+        if (!r->is_alive()) {
+            delete (cities[i].first);
             cities[i].first = nullptr;
-        if (!b->is_alive())
+        }
+        if (!b->is_alive()) {
+            delete (cities[i].second);
             cities[i].second = nullptr;
+        }
     }
 }
 
@@ -639,6 +650,7 @@ void event_system::happen55_report_warriors() {
 }
 
 void Base::increase_build_inds(string part, int bound) {
+    // bound 战士数目
     if ("red" == part) {
         Base::red_build_ind = (Base::red_build_ind + 1) % bound;
     } else {
@@ -652,8 +664,6 @@ warrior* Base::make_warrior() {
     int ind = -1, location = -1;
     ind = part == "red" ? red_build_ind : blue_build_ind;
     location = part == "red" ? 0 : city_count + 1;
-    // todo
-    assert(ind != -1);
     int warrior_element_ready = warrior_element[warrior_build_order[part][ind]];
     if (warrior_element_ready <= cur_life_value) {
         part_warrior_cnt[part]++;
@@ -674,6 +684,7 @@ weapon* Base::make_weapon(string name) {
         return new bomb(name);
     if (name == "arrow")
         return new arrow(name, 0);
+    return nullptr;
 }
 
 warrior* Base::further_process(warrior* p) {
@@ -686,7 +697,6 @@ warrior* Base::further_process(warrior* p) {
         string weapon_name = weapon_kinds[p->id % 3];
         p->weapons[0] = make_weapon(weapon_name);
         ret = new dragon(*p);
-        assert(name == "dragon" && ret != nullptr);
     } else if (name == "ninja") {
         string weapon_name1 = weapon_kinds[p->id % 3],
                weapon_name2 = weapon_kinds[(p->id + 1) % 3];
@@ -694,25 +704,21 @@ warrior* Base::further_process(warrior* p) {
         p->weapons[0] = make_weapon(weapon_name1);
         p->weapons[1] = make_weapon(weapon_name2);
         ret = new ninja(*p);
-        assert(name == "ninja" && ret != nullptr);
     } else if (name == "iceman") {
         string weapon_name = weapon_kinds[p->id % 3];
         p->weapons[0] = make_weapon(weapon_name);
         ret = new iceman(*p);
-        assert(name == "iceman" && ret != nullptr);
     } else if (name == "lion") {
         string weapon_name = weapon_kinds[p->id % 3];
         p->weapons[0] = make_weapon(weapon_name);
         ret = new lion(*p, cur_life_value);
-        assert(name == "lion" && ret != nullptr);
     } else if (name == "wolf") {
         ret = new wolf(*p);
-        assert(name == "wolf" && ret != nullptr);
     }
     return ret;
 }
 
-warrior* Base::make_warriors() {
+void Base::make_warriors() {
     warrior* p = further_process(make_warrior());
     if (p != nullptr) {
         event_system::warrior_born(*p);
@@ -734,7 +740,12 @@ void __init__() {
     warrior_build_order["red"] = red_order;
     if (sw == 0)
         sw = new sword("sword");
-
+    for (city& c : cities) {
+        if (c.first != nullptr)
+            delete c.first;
+        if (c.second != nullptr)
+            delete c.second;
+    }
     cities.clear();
     for (int i = 0; i < city_count + 2; i++) {
         cities.push_back(city(nullptr, nullptr));
