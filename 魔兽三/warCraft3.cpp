@@ -396,6 +396,7 @@ void sword::attack(warrior* attacker, warrior* injure) {
 }
 
 bool sword::is_usable() {
+    //宝剑一定是可用的
     return true;
 }
 
